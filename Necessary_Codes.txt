@@ -1,0 +1,93 @@
+# Hive queries
+#Create external table pointing to Iceberg data
+CREATE EXTERNAL TABLE iceberg (
+    Event_Name STRING,
+    Event_Type STRING,
+    Event_Value STRING,
+    Event_Timestamp STRING,
+    Event_Page_Source STRING,
+    Event_Page_URL STRING,
+    Event_Component_ID STRING,
+    User_ID STRING,
+    Event_Date STRING
+)
+LOCATION 'mnt/d/output/iceberg';
+
+#Top 10 events and its count for a given date:
+top_events_per_date = spark.sql(f"SELECT EventDate, EventName, COUNT(*) AS EventCount FROM {iceberg} GROUP BY EventDate, EventName ORDER BY EventDate, EventCount DESC")
+top_events_per_date.show(10)
+
+#Returning users:
+returning_users = spark.sql(f"SELECT UserID, COUNT(DISTINCT EventDate) AS NumOfDays FROM {iceberg} GROUP BY UserID HAVING NumOfDays > 1")
+returning_users.show()
+
+#Active users:
+active_users = spark.sql(f"SELECT UserID, COUNT(*) AS EventCount FROM {iceberg} GROUP BY UserID ORDER BY EventCount DESC")
+active_users.show()
+
+#Churn:
+churn_users = spark.sql(f"SELECT UserID, MAX(EventDate) AS LastEventDate FROM {iceberg} GROUP BY UserID HAVING LastEventDate < '2024-01-16'")
+churn_users.show()
+
+
+#Kafka_code:
+
+1.Connect local data to Kafka using PySpark job
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import to_json
+from pyspark.sql.types import StructType, StringType
+
+# Initialize SparkSession
+spark = SparkSession.builder \
+    .appName("LocalDataToKafka") \
+    .getOrCreate()
+
+# Read data from local CSV
+data = spark.read.csv("mnt/d/EVENT.csv", header=True)
+
+# Define schema for Kafka
+kafka_schema = StructType() \
+    .add("Event_Name", StringType()) \
+    .add("Event_Type", StringType()) \
+    .add("Event_Value", StringType()) \
+    .add("Event_Timestamp", StringType()) \
+    .add("Event_Page_Source", StringType()) \
+    .add("Event_Page_URL", StringType()) \
+    .add("Event_Component_ID", StringType()) \
+    .add("User_ID", StringType()) \
+    .add("Event_Date", StringType())
+
+# Convert data to JSON and write to Kafka
+data.select(to_json(data.schema.names).alias("value")) \
+    .write \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", "localhost:9092") \
+    .option("topic", "kevent") \
+    .save()
+
+
+
+#Kafka to Iceberg: 
+
+
+2.Connect Kafka data to Iceberg table using Python
+from pyspark.sql import SparkSession
+
+# Initialize SparkSession
+spark = SparkSession.builder \
+    .appName("KafkaToIceberg") \
+    .getOrCreate()
+
+# Read data from Kafka
+data = spark \
+    .readStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", "localhost:9092") \
+    .option("subscribe", "kevent") \
+    .load()
+
+# Write data to Iceberg table
+data.write \
+    .format("iceberg") \
+    .mode("append") \
+    .save("mnt/d/output/iceberg_table")
