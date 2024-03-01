@@ -18,7 +18,7 @@ columns = ["Name", "Job", "Number","Source","URL","CID","ID"]
 df = spark.createDataFrame(data, columns)
 
 # Write data to Iceberg table
-df.write.format("iceberg").mode("append").save("my_iceberg_catalog.db.fakeemp")
+df.write.format("iceberg").mode("append").save("my_iceberg_catalog.db.empdata")
 
 print(f"{num_records} random records added to the Iceberg table.")
 
