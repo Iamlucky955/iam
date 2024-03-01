@@ -1,0 +1,45 @@
+CREATING ICEBERG TABLE USING PYTHON :
+
+
+# kafka_pyspark.py
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import from_json, col
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+
+# Initialize Spark session
+spark = SparkSession.builder.appName("KafkaPySpark").getOrCreate()
+
+# Kafka broker configuration
+bootstrap_servers = 'localhost:9092'
+topic_name = 'myTopic'
+
+# Subscribe to Kafka topic
+df_kafka = spark.readStream.format("kafka") \
+    .option("kafka.bootstrap.servers", bootstrap_servers) \
+    .option("subscribe", topic_name) \
+    .load()
+
+# Define the schema for the Kafka message value (adjust based on your actual schema)
+schema = StructType([
+    StructField("EventName", StringType(), True),
+    StructField("EventType", StringType(), True),
+    StructField("EventValue", DoubleType(), True),
+    StructField("EventPageSource", StringType(), True),
+    StructField("EventPageURL", StringType(), True),
+    StructField("ComponentID", StringType(), True),
+    StructField("UserID", StringType(), True)
+])
+
+# Parse JSON data from Kafka value column
+df_kafka_parsed = df_kafka.selectExpr("CAST(value AS STRING)").select(from_json("value", schema).alias("data")).select("data.*")
+
+
+# Optionally, we can perform transformations or additional processing on df_kafka_parsed
+
+# Write the DataFrame to Iceberg table
+df_kafka_parsed.write.format("iceberg") \
+    .mode("append") \
+    .save("my_iceberg_catalog.db.empdata")
+
+# Stop Spark session
+spark.stop()
